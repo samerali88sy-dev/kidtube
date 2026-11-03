@@ -25,7 +25,6 @@ jobs:
       - name: Create Android project
         run: |
           mkdir -p app/src/main/java/com/kidtube/offline
-          mkdir -p app/src/main
 
           cat > gradle.properties <<'EOF'
           android.useAndroidX=true
@@ -63,9 +62,11 @@ jobs:
               id("com.android.application")
               id("org.jetbrains.kotlin.android")
           }
+
           android {
               namespace = "com.kidtube.offline"
               compileSdk = 35
+
               defaultConfig {
                   applicationId = "com.kidtube.offline"
                   minSdk = 23
@@ -73,17 +74,15 @@ jobs:
                   versionCode = 1
                   versionName = "1.0"
               }
-              compileOptions {
-                 sourceCompatibility = JavaVersion.VERSION_17
-                 targetCompatibility = JavaVersion.VERSION_17
-                               }
 
-             kotlinOptions {
-                jvmTarget = "17"
-                            }    
-             dependencies {
-                implementation("androidx.activity:activity-ktx:1.9.3")
-                         }        
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
           }
           EOF
 
@@ -91,8 +90,7 @@ jobs:
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <application
                   android:theme="@android:style/Theme.Material.Light.NoActionBar"
-                  android:label="KidTube"
-                  android:usesCleartextTraffic="false">
+                  android:label="KidTube">
                   <activity
                       android:name=".MainActivity"
                       android:exported="true">
@@ -114,29 +112,15 @@ jobs:
           import android.net.Uri
           import android.view.Gravity
           import android.widget.*
-          import androidx.activity.result.contract.ActivityResultContracts
 
           class MainActivity : Activity() {
               private lateinit var list: LinearLayout
               private lateinit var player: VideoView
               private val videos = mutableListOf<Pair<String, Uri>>()
 
-              private val picker = registerForActivityResult(
-                  ActivityResultContracts.OpenMultipleDocuments()
-              ) { uris ->
-                  uris.forEach { uri ->
-                      try {
-                          contentResolver.takePersistableUriPermission(
-                              uri, Intent.FLAG_GRANT_READ_URI_PERMISSION
-                          )
-                      } catch (_: Exception) {}
-                      videos.add((uri.lastPathSegment ?: "My video") to uri)
-                  }
-                  showVideos()
-              }
-
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
+
                   val root = LinearLayout(this).apply {
                       orientation = LinearLayout.VERTICAL
                       setPadding(24, 24, 24, 24)
@@ -153,14 +137,19 @@ jobs:
                   root.addView(Button(this).apply {
                       text = "＋ Add videos"
                       setOnClickListener {
-                          picker.launch(arrayOf("video/*"))
+                          val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+                              type = "video/*"
+                              putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+                              addCategory(Intent.CATEGORY_OPENABLE)
+                              addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                              addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+                          }
+                          startActivityForResult(intent, 1001)
                       }
                   })
 
                   player = VideoView(this)
-                  root.addView(player, LinearLayout.LayoutParams(
-                      -1, 240
-                  ))
+                  root.addView(player, LinearLayout.LayoutParams(-1, 240))
 
                   root.addView(TextView(this).apply {
                       text = "My video library"
@@ -172,16 +161,55 @@ jobs:
                       orientation = LinearLayout.VERTICAL
                   }
                   root.addView(list)
+
                   setContentView(ScrollView(this).apply {
                       addView(root)
                   })
               }
 
+              @Deprecated("Use Activity Result APIs in a future version")
+              override fun onActivityResult(
+                  requestCode: Int,
+                  resultCode: Int,
+                  data: Intent?
+              ) {
+                  super.onActivityResult(requestCode, resultCode, data)
+
+                  if (requestCode == 1001 && resultCode == RESULT_OK && data != null) {
+                      val selected = mutableListOf<Uri>()
+
+                      data.clipData?.let { clip ->
+                          for (i in 0 until clip.itemCount) {
+                              selected.add(clip.getItemAt(i).uri)
+                          }
+                      } ?: data.data?.let {
+                          selected.add(it)
+                      }
+
+                      selected.forEach { uri ->
+                          try {
+                              contentResolver.takePersistableUriPermission(
+                                  uri,
+                                  Intent.FLAG_GRANT_READ_URI_PERMISSION
+                              )
+                          } catch (_: Exception) {
+                          }
+
+                          videos.add(
+                              (uri.lastPathSegment ?: "My video") to uri
+                          )
+                      }
+
+                      showVideos()
+                  }
+              }
+
               private fun showVideos() {
                   list.removeAllViews()
+
                   videos.forEach { (name, uri) ->
                       list.addView(Button(this).apply {
-                          text = "▶  $name"
+                          text = "▶ $name"
                           setOnClickListener {
                               player.setVideoURI(uri)
                               player.start()
