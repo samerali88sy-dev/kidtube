@@ -27,6 +27,11 @@ jobs:
           mkdir -p app/src/main/java/com/kidtube/offline
           mkdir -p app/src/main
 
+          cat > gradle.properties <<'EOF'
+          android.useAndroidX=true
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          EOF
+
           cat > settings.gradle.kts <<'EOF'
           pluginManagement {
               repositories {
